@@ -7508,34 +7508,10 @@
     // =========================================================================
     let activeSessionWatchdogTimerId = null;
     let activeSessionFirebaseRef = null;
+    // Không dùng BroadcastChannel hoặc localStorage để quyết định đăng xuất.
+    // Các nguồn này chỉ phản ánh trạng thái từng trình duyệt/tab và có thể cũ;
+    // Cloudflare Worker là nguồn duy nhất xác nhận mã phiên còn hiệu lực.
     let sessionBroadcastChannel = null;
-    try {
-      if (typeof BroadcastChannel !== 'undefined') {
-        sessionBroadcastChannel = new BroadcastChannel('nafiqpm1_single_session_channel');
-        sessionBroadcastChannel.onmessage = (ev) => {
-          const msg = ev && ev.data;
-          if (!msg || !appState.isAuthenticated || !appState.currentUser) return;
-          const myKey = getCanonicalUserSessionKey(appState.currentUser);
-          if (msg.type === 'SESSION_CLAIM' && msg.userKey === myKey && msg.activeSessionId && msg.activeSessionId !== appState.activeSessionId) {
-            forceLogoutDueToOtherDeviceLogin(msg.deviceInfo || 'một cửa sổ/thiết bị khác');
-          }
-        };
-      }
-    } catch (eBc) {}
-
-    window.addEventListener('storage', (ev) => {
-      if (!ev || !appState.isAuthenticated || !appState.currentUser) return;
-      if (ev.key === LS_KEY_ACTIVE_SESSIONS && ev.newValue) {
-        try {
-          const map = JSON.parse(ev.newValue);
-          const myKey = getCanonicalUserSessionKey(appState.currentUser);
-          const remote = map && map[myKey];
-          if (remote && remote.activeSessionId && appState.activeSessionId && remote.activeSessionId !== appState.activeSessionId) {
-            forceLogoutDueToOtherDeviceLogin(remote.deviceInfo || 'trình duyệt/tab khác');
-          }
-        } catch (eSt) {}
-      }
-    });
 
     function getCanonicalUserSessionKey(userObj) {
       if (!userObj) return '';
@@ -7595,12 +7571,7 @@
       };
       appState.activeSessionsMap = appState.activeSessionsMap || {};
       appState.activeSessionsMap[userKey] = sessRecord;
-      try {
-        sessionBroadcastChannel?.postMessage({
-          type: 'SESSION_CLAIM', userKey, activeSessionId: sessRecord.activeSessionId,
-          deviceInfo: sessRecord.deviceInfo
-        });
-      } catch (ePost) {}
+      // Không phát tín hiệu đăng xuất qua BroadcastChannel; Worker xử lý phiên cũ qua heartbeat.
 
       // Worker là nguồn quyết định duy nhất. Không ghi activeSessions trực tiếp từ trình duyệt lên Firebase.
       if (!getEffectiveGatewayUrl()) return true; // Chế độ cũ/offline, không bảo đảm single-session đa thiết bị.
